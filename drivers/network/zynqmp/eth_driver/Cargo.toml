@@ -19,4 +19,5 @@ sel4-driver-interfaces = { git = "https://github.com/seL4/rust-sel4" }
 sel4-logging = { git = "https://github.com/seL4/rust-sel4" }
 sel4-microkit = { git = "https://github.com/seL4/rust-sel4", default-features = false }
 sel4-microkit-driver-adapters = { git = "https://github.com/seL4/rust-sel4" }
+sel4-sddf-netqueue = { version = "0.1.0", path = "../../../../../sel4-sddf-netqueue" }
 # serde = { version = "1.0.147", default-features = false }
