@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 //
 
-use super::{MTU, NUM_BUFS};
+use super::NUM_BUFS;
 use core::ops::{Deref, DerefMut};
 
 mod descriptor;
@@ -12,21 +12,20 @@ use descriptor::Descriptor;
 
 use super::DmaPtrs;
 
-pub const DESC_SIZE: usize = core::mem::size_of::<Descriptor>();
-
 pub struct RxRing {
-    curr_entry: usize,
+    head: usize,
+    tail: usize,
     entries: *mut [Descriptor; NUM_BUFS],
 }
 
 impl RxRing {
     pub fn new(dma_ptrs: &DmaPtrs) -> Self {
         let entries = dma_ptrs.desc.vaddr.cast();
-        let mut ring = Self {
-            curr_entry: 0,
+        let ring = Self {
+            head: 0,
+            tail: 0,
             entries,
         };
-        ring.setup(dma_ptrs.buf as usize);
         ring
     }
 
@@ -34,27 +33,42 @@ impl RxRing {
         self.entries
     }
 
-    fn setup(&mut self, buffers_paddr: usize) {
-        for (i, entry) in self.iter_mut().enumerate() {
-            entry.set_addr(buffers_paddr + (i * MTU));
-            entry.mark_done();
-        }
-        self.last_mut().unwrap().mark_last();
-    }
-
     pub fn next_entry_available(&self) -> bool {
-        self.get(self.curr_entry).unwrap().is_available()
-    }
-
-    pub fn recv_next(&mut self) -> usize {
         let entries_len = self.len();
-        let entry = self.curr_entry;
-        self.curr_entry = (self.curr_entry + 1) % entries_len;
-        entry * MTU
+        let index = self.head % entries_len;
+        self.get(index).unwrap().is_available()
     }
 
-    pub fn mark_done(&mut self, offset: usize) {
-        self.get_mut(offset / MTU).unwrap().mark_done();
+    pub fn recv_next(&mut self) -> (usize, u32) {
+        let entries_len = self.len();
+        let index = self.head % entries_len;
+        let entry = self.get(index).unwrap();
+        let addr = entry.addr();
+        let len = entry.len();
+        self.head += 1;
+        (addr, len)
+    }
+
+    pub fn mark_done(&mut self, buffer_paddr: usize) {
+        let entries_len = self.len();
+        let index = self.tail % entries_len;
+        let entry = self.get_mut(index).unwrap();
+        entry.set_addr(buffer_paddr);
+        entry.mark_done();
+        if index == (NUM_BUFS - 1) {
+            entry.mark_last();
+        }
+        self.tail += 1;
+    }
+
+    pub fn is_empty(&self) -> bool {
+        let len = self.tail - self.head;
+        len == 0
+    }
+
+    pub fn is_full(&self) -> bool {
+        let len = self.tail - self.head;
+        len == self.len()
     }
 }
 

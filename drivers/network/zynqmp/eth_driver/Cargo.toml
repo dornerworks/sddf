@@ -5,7 +5,7 @@
 #
 
 [package]
-name = "eth-driver"
+name = "eth_driver_zynqmp"
 version = "0.1.0"
 authors = ["Robbie VanVossen <robert.vanvossen@dornerworks.com>"]
 edition = "2021"
@@ -14,10 +14,9 @@ license = "BSD-2-Clause"
 [dependencies]
 log = "0.4.17"
 eth-driver-core = { path = "core" }
-sddf-utils = { path = "../sddf_utils" }
-sel4-driver-interfaces = { git = "https://github.com/seL4/rust-sel4" }
-sel4-logging = { git = "https://github.com/seL4/rust-sel4" }
-sel4-microkit = { git = "https://github.com/seL4/rust-sel4", default-features = false }
-sel4-microkit-driver-adapters = { git = "https://github.com/seL4/rust-sel4" }
-sel4-sddf-netqueue = { version = "0.1.0", path = "../../../../../sel4-sddf-netqueue" }
-# serde = { version = "1.0.147", default-features = false }
+sel4-driver-interfaces = { git = "https://github.com/seL4/rust-sel4", tag = "v3.0.0" }
+sel4-shared-memory = { git = "https://github.com/seL4/rust-sel4", tag = "v3.0.0" }
+sel4-logging = { git = "https://github.com/seL4/rust-sel4", tag = "v3.0.0" }
+sel4-microkit = { git = "https://github.com/seL4/rust-sel4", tag = "v3.0.0", default-features = false }
+sel4-sddf-netqueue = { git = "https://github.com/dornerworks/sel4-sddf-netqueue" }
+ptr_meta = { version = "0.3.1", default-features = false }

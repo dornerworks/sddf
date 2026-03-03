@@ -24,6 +24,7 @@ eth_driver.elf: $(build_dir)/eth_driver.elf.intermediate
 .INTERMDIATE: $(build_dir)/eth_driver.elf.intermediate
 $(build_dir)/eth_driver.elf.intermediate:
 	SEL4_INCLUDE_DIRS=$(abspath $(sel4_include_dirs)) \
+	PROJECT_ROOT=${LIONSOS} \
 		cargo build \
 			-Z build-std=core,alloc,compiler_builtins \
 			-Z build-std-features=compiler-builtins-mem \

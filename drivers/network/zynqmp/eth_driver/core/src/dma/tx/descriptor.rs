@@ -41,6 +41,10 @@ register_bitfields![u32,
 ];
 
 impl Descriptor {
+    pub fn addr(&self) -> u32 {
+        self.addr
+    }
+
     pub fn set_addr(&mut self, addr: usize) {
         self.addr = addr as u32;
     }

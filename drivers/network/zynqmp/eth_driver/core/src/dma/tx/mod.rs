@@ -4,13 +4,11 @@
 // SPDX-License-Identifier: BSD-2-Clause
 //
 
-use super::{DmaPtr, DmaPtrs, MTU, NUM_BUFS};
+use super::{DmaPtr, DmaPtrs, NUM_BUFS};
 use core::ops::{Deref, DerefMut};
 
 mod descriptor;
 use descriptor::Descriptor;
-
-pub const DESC_SIZE: usize = core::mem::size_of::<Descriptor>();
 
 pub struct TxDummy {
     desc: *mut Descriptor,
@@ -47,7 +45,8 @@ impl DerefMut for TxDummy {
 }
 
 pub struct TxRing {
-    base_paddr: usize,
+    head: usize,
+    tail: usize,
     entries: *mut [Descriptor; NUM_BUFS],
 }
 
@@ -55,10 +54,11 @@ impl TxRing {
     pub fn new(dma_ptrs: &DmaPtrs) -> Self {
         let entries = dma_ptrs.desc.vaddr.cast();
         let mut ring = Self {
-            base_paddr: dma_ptrs.desc.paddr as usize,
+            head: 0,
+            tail: 0,
             entries,
         };
-        ring.setup(dma_ptrs.buf as usize);
+        ring.setup();
         ring
     }
 
@@ -66,32 +66,55 @@ impl TxRing {
         self.entries
     }
 
-    fn setup(&mut self, buffers_paddr: usize) {
-        for (i, entry) in self.iter_mut().enumerate() {
-            entry.set_addr(buffers_paddr + (i * MTU));
+    pub fn get_tail(&self) -> usize {
+        self.tail
+    }
+
+    fn setup(&mut self) {
+        for (_i, entry) in self.iter_mut().enumerate() {
             entry.mark_sw_owned();
         }
         self.last_mut().unwrap().mark_last();
     }
 
-    pub fn entry_available(&self, offset: usize) -> bool {
-        self.get(offset / MTU).unwrap().is_available()
+    pub fn entry_available(&self) -> bool {
+        let entries_len = self.len();
+        let index = self.tail % entries_len;
+        self.get(index).unwrap().is_available()
     }
 
-    pub fn get_buffer(&mut self, offset: usize, len: usize) -> u32 {
-        let idx = offset / MTU;
-        let desc = self.get_mut(idx).unwrap();
+    pub fn set_desc(&mut self, buffer_paddr: usize, len: usize) {
+        let entries_len = self.len();
+        let index = self.tail % entries_len;
+        let desc = self.get_mut(index).unwrap();
         desc.clear_status();
         desc.set_len(len);
+        desc.set_addr(buffer_paddr);
         // Assume only single buffer sized frames
         desc.mark_frame_end();
         desc.mark_gem_owned();
 
-        self.desc_paddr(idx)
+        self.tail +=1;
     }
 
-    fn desc_paddr(&self, idx: usize) -> u32 {
-        (self.base_paddr + idx * 8).try_into().unwrap()
+    pub fn get_buffer(&mut self) -> usize {
+        let entries_len = self.len();
+        let index = self.head % entries_len;
+        let entry = self.get_mut(index).unwrap();
+        entry.mark_sw_owned();
+        let addr = entry.addr() as usize;
+        self.head += 1;
+        addr
+    }
+
+    pub fn is_empty(&self) -> bool {
+        let len = self.tail - self.head;
+        len == 0
+    }
+
+    pub fn is_full(&self) -> bool {
+        let len = self.tail - self.head;
+        len == self.len()
     }
 }
 

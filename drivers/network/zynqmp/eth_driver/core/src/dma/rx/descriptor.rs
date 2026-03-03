@@ -8,6 +8,8 @@ use tock_registers::interfaces::{ReadWriteable, Readable};
 use tock_registers::register_bitfields;
 use tock_registers::registers::ReadWrite;
 
+const FRAME_LEN_MASK: u32 = 0x0000_1FFF;
+
 // Only support 32-bit addressing for now
 #[repr(C)]
 pub struct Descriptor {
@@ -28,6 +30,10 @@ impl Descriptor {
     pub fn addr(&self) -> usize {
         let unshifted_addr = self.addr.read(Addr::ADDRESS) as usize;
         unshifted_addr << Addr::ADDRESS.shift
+    }
+
+    pub fn len(&self) -> u32 {
+        self.status & FRAME_LEN_MASK
     }
 
     pub fn set_addr(&mut self, addr: usize) {

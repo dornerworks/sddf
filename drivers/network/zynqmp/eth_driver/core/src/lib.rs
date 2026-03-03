@@ -14,7 +14,7 @@ use zynqmp_hal::gem::{Device, MacAddress, Running};
 mod dma;
 mod sel4_interfaces;
 
-use dma::{alloc_dma, GemDmaPtrs, RxRing, TxDummy, TxRing};
+use dma::{DmaPtrs, DmaPtr, GemDmaPtrs, RxRing, TxDummy, TxRing};
 pub use dma::{DmaDef, MTU};
 
 pub struct Driver {
@@ -33,8 +33,30 @@ pub enum IrqType {
 const MAC: [u8; 6] = [0x00, 0x0A, 0x35, 0x03, 0x78, 0xA1];
 
 impl Driver {
-    pub fn new(ptr: *mut (), dma: DmaDef, rx_buf_paddr: *mut (), tx_buf_paddr: *mut ()) -> Self {
-        let dma_ptrs = alloc_dma(dma, rx_buf_paddr, tx_buf_paddr);
+    pub fn new(ptr: *mut (), rx_vaddr: *mut (), tx_vaddr: *mut (), tx_dummy_vaddr: *mut (), rx_paddr: *mut (), tx_paddr: *mut (),
+        tx_dummy_paddr: *mut ()) -> Self {
+
+        info!("Initializing Driver");
+        let dma_ptrs = GemDmaPtrs {
+            rx: DmaPtrs {
+                desc: DmaPtr {
+                    vaddr: rx_vaddr,
+                    paddr: rx_paddr,
+                },
+            },
+            tx: DmaPtrs {
+                desc: DmaPtr {
+                    vaddr: tx_vaddr,
+                    paddr: tx_paddr,
+                },
+            },
+            tx_dummy: DmaPtr {
+                vaddr: tx_dummy_vaddr,
+                paddr: tx_dummy_paddr,
+            },
+        };
+
+        info!("Initializing RxRing");
         let rx_ring = RxRing::new(&dma_ptrs.rx);
         let tx_ring = TxRing::new(&dma_ptrs.tx);
         let _tx_dummy = TxDummy::new(&dma_ptrs.tx_dummy);
@@ -95,6 +117,8 @@ impl Driver {
         dev.set_speed(speed);
         dev.set_duplex(duplex);
 
+        dev.enable_promiscuous_mode();
+
         dev.run()
     }
 
@@ -108,11 +132,19 @@ impl Driver {
         }
     }
 
-    pub fn rx_mark_done(&mut self, offset: usize) {
-        self.rx_ring.mark_done(offset);
+    pub fn rx_mark_done(&mut self, buf_paddr: usize) {
+        self.rx_ring.mark_done(buf_paddr);
     }
 
-    pub fn receive(&mut self) -> Option<usize> {
+    pub fn rx_is_empty(&self) -> bool {
+        self.rx_ring.is_empty()
+    }
+
+    pub fn rx_is_full(&self) -> bool {
+        self.rx_ring.is_full()
+    }
+
+    pub fn receive(&mut self) -> Option<(usize, u32)> {
         if self.rx_ring.next_entry_available() {
             Some(self.rx_ring.recv_next())
         } else {
@@ -120,15 +152,27 @@ impl Driver {
         }
     }
 
-    pub fn transmit(&mut self, offset: usize, len: usize) {
-        if self.tx_ring.entry_available(offset) {
-            let paddr = self.tx_ring.get_buffer(offset, len);
+    pub fn tx_get_buffer(&mut self) -> usize {
+        self.tx_ring.get_buffer()
+    }
+
+    pub fn tx_is_empty(&self) -> bool {
+        self.tx_ring.is_empty()
+    }
+
+    pub fn tx_is_full(&self) -> bool {
+        self.tx_ring.is_full()
+    }
+
+    pub fn transmit(&mut self, buf_paddr: usize, len: usize) {
+        if self.tx_ring.entry_available() {
+            self.tx_ring.set_desc(buf_paddr, len);
             self.dev.wait_for_transmit_finish();
-            self.dev.set_tx_desc(paddr);
             self.dev.transmit();
             self.dev.wait_for_transmit_finish();
         } else {
-            error!("Tried to transmit with a descriptor that SW doesn't own: {offset}. Should not happen");
+            let index = self.tx_ring.get_tail() % self.tx_ring.len();
+            error!("Tried to transmit with a descriptor that SW doesn't own: {index}. Should not happen");
         }
     }
 }
