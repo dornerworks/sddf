@@ -175,7 +175,6 @@ impl Driver {
             self.tx_ring.set_desc(buf_paddr, len);
             self.dev.wait_for_transmit_finish();
             self.dev.transmit();
-            self.dev.wait_for_transmit_finish();
         } else {
             let index = self.tx_ring.get_tail() % self.tx_ring.len();
             error!("Tried to transmit with a descriptor that SW doesn't own: {index}. Should not happen");
