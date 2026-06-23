@@ -11,14 +11,14 @@
 use core::ptr::NonNull;
 
 use eth_driver_core::Driver;
-use log::{info, debug};
+use log::{debug, info};
 use sel4_driver_interfaces::HandleInterrupt;
-use sel4_shared_memory::SharedMemoryRef;
 use sel4_microkit::{protection_domain, Channel, ChannelSet, Handler, Infallible, MessageInfo};
-use sel4_sddf_netqueue::{NetQueueHandle, RawNetQueue, NetBuffDesc};
+use sel4_sddf_netqueue::{NetBuffDesc, NetQueueHandle, RawNetQueue};
+use sel4_shared_memory::SharedMemoryRef;
 
-use crate::config::NET_CONFIG;
 use crate::config::DEVICE_RESOURCES;
+use crate::config::NET_CONFIG;
 
 mod config;
 
@@ -29,56 +29,90 @@ fn init<'a>() -> HandlerImpl {
     let rx_notify: fn() = || config::channels::DEVICE.notify();
     let tx_notify: fn() = || config::channels::CLIENT.notify();
 
-    debug!("RX Free Vaddr is   {:#?}", unsafe {NET_CONFIG.virt_rx.free_queue.vaddr  });
-    debug!("RX Free size  is   {:x }", unsafe {NET_CONFIG.virt_rx.free_queue.size   });
-    debug!("RX Free Vaddr is   {:#?}", unsafe {NET_CONFIG.virt_rx.free_queue.vaddr  });
-    debug!("RX Free size  is   {:x }", unsafe {NET_CONFIG.virt_rx.free_queue.size   });
-    debug!("RX Active Vaddr is {:#?}", unsafe {NET_CONFIG.virt_rx.active_queue.vaddr});
-    debug!("RX Active size is  {:x }", unsafe {NET_CONFIG.virt_rx.active_queue.size });
-    debug!("RX Num Buffers is  {:x }", unsafe {NET_CONFIG.virt_rx.num_buffers });
-    debug!("RX ID is           {:x }", unsafe {NET_CONFIG.virt_rx.id });
+    debug!("RX Free Vaddr is   {:#?}", unsafe {
+        NET_CONFIG.virt_rx.free_queue.vaddr
+    });
+    debug!("RX Free size  is   {:x }", unsafe {
+        NET_CONFIG.virt_rx.free_queue.size
+    });
+    debug!("RX Free Vaddr is   {:#?}", unsafe {
+        NET_CONFIG.virt_rx.free_queue.vaddr
+    });
+    debug!("RX Free size  is   {:x }", unsafe {
+        NET_CONFIG.virt_rx.free_queue.size
+    });
+    debug!("RX Active Vaddr is {:#?}", unsafe {
+        NET_CONFIG.virt_rx.active_queue.vaddr
+    });
+    debug!("RX Active size is  {:x }", unsafe {
+        NET_CONFIG.virt_rx.active_queue.size
+    });
+    debug!("RX Num Buffers is  {:x }", unsafe {
+        NET_CONFIG.virt_rx.num_buffers
+    });
+    debug!("RX ID is           {:x }", unsafe { NET_CONFIG.virt_rx.id });
 
-    debug!("TX Free Vaddr is   {:#?}", unsafe {NET_CONFIG.virt_tx.free_queue.vaddr  });
-    debug!("TX Free size  is   {:x }", unsafe {NET_CONFIG.virt_tx.free_queue.size   });
-    debug!("TX Active Vaddr is {:#?}", unsafe {NET_CONFIG.virt_tx.active_queue.vaddr});
-    debug!("TX Active size is  {:x }", unsafe {NET_CONFIG.virt_tx.active_queue.size });
-    debug!("TX Num Buffers is  {:x }", unsafe {NET_CONFIG.virt_tx.num_buffers });
-    debug!("TX ID is           {:x }", unsafe {NET_CONFIG.virt_tx.id });
+    debug!("TX Free Vaddr is   {:#?}", unsafe {
+        NET_CONFIG.virt_tx.free_queue.vaddr
+    });
+    debug!("TX Free size  is   {:x }", unsafe {
+        NET_CONFIG.virt_tx.free_queue.size
+    });
+    debug!("TX Active Vaddr is {:#?}", unsafe {
+        NET_CONFIG.virt_tx.active_queue.vaddr
+    });
+    debug!("TX Active size is  {:x }", unsafe {
+        NET_CONFIG.virt_tx.active_queue.size
+    });
+    debug!("TX Num Buffers is  {:x }", unsafe {
+        NET_CONFIG.virt_tx.num_buffers
+    });
+    debug!("TX ID is           {:x }", unsafe { NET_CONFIG.virt_tx.id });
 
     debug!("rx_notify is {:#?}", rx_notify);
     debug!("DEVICE is {:#?}", config::channels::DEVICE);
     debug!("tx_notify is {:#?}", tx_notify);
     debug!("CLIENT is {:#?}", config::channels::CLIENT);
 
-    debug!("DEVICE_RESOURCES {} vaddr {:#?}", 0, unsafe { DEVICE_RESOURCES.regions[0].region.vaddr });
-    debug!("DEVICE_RESOURCES {} vaddr {:#?}", 1, unsafe { DEVICE_RESOURCES.regions[1].region.vaddr });
-    debug!("DEVICE_RESOURCES {} vaddr {:#?}", 2, unsafe { DEVICE_RESOURCES.regions[2].region.vaddr });
+    debug!("DEVICE_RESOURCES {} vaddr {:#?}", 0, unsafe {
+        DEVICE_RESOURCES.regions[0].region.vaddr
+    });
+    debug!("DEVICE_RESOURCES {} vaddr {:#?}", 1, unsafe {
+        DEVICE_RESOURCES.regions[1].region.vaddr
+    });
+    debug!("DEVICE_RESOURCES {} vaddr {:#?}", 2, unsafe {
+        DEVICE_RESOURCES.regions[2].region.vaddr
+    });
 
-    let rx_free_ptr = NonNull::new(unsafe {NET_CONFIG.virt_rx.free_queue.vaddr} as *mut RawNetQueue);
-    let rx_active_ptr = NonNull::new(unsafe {NET_CONFIG.virt_rx.active_queue.vaddr} as *mut RawNetQueue);
+    let rx_free_ptr =
+        NonNull::new(unsafe { NET_CONFIG.virt_rx.free_queue.vaddr } as *mut RawNetQueue);
+    let rx_active_ptr =
+        NonNull::new(unsafe { NET_CONFIG.virt_rx.active_queue.vaddr } as *mut RawNetQueue);
     let rx_free = unsafe {
         SharedMemoryRef::new(
-            rx_free_ptr.unwrap_or_else(|| { panic!("!{} is null", stringify!(rx_free_ptr)) })
+            rx_free_ptr.unwrap_or_else(|| panic!("!{} is null", stringify!(rx_free_ptr))),
         )
     };
     let rx_active = unsafe {
         SharedMemoryRef::new(
-            rx_active_ptr.unwrap_or_else(|| { panic!("!{} is null", stringify!(rx_active_ptr)) })
+            rx_active_ptr.unwrap_or_else(|| panic!("!{} is null", stringify!(rx_active_ptr))),
         )
     };
     let rx_num_buffers = unsafe { NET_CONFIG.virt_rx.num_buffers };
     let rx_handle = NetQueueHandle::from_ptrs(rx_free, rx_active, rx_num_buffers.into(), false);
 
-    let tx_free_ptr = NonNull::new(unsafe {NET_CONFIG.virt_tx.free_queue.vaddr} as *mut RawNetQueue);
-    let tx_active_ptr = NonNull::new(unsafe {NET_CONFIG.virt_tx.active_queue.vaddr} as *mut RawNetQueue);
+    let tx_free_ptr =
+        NonNull::new(unsafe { NET_CONFIG.virt_tx.free_queue.vaddr } as *mut RawNetQueue);
+    let tx_active_ptr =
+        NonNull::new(unsafe { NET_CONFIG.virt_tx.active_queue.vaddr } as *mut RawNetQueue);
     let tx_free = unsafe {
         SharedMemoryRef::new(
-            tx_free_ptr.unwrap_or_else(|| { panic!("!{} is null", stringify!(tx_free_ptr)) })
+            tx_free_ptr.unwrap_or_else(|| panic!("!{} is null", stringify!(tx_free_ptr))),
         )
     };
     let tx_active = unsafe {
         SharedMemoryRef::new(
-            tx_active_ptr.unwrap_or_else(|| { panic!("!{} is null", stringify!(tx_active_ptr)) })
+            tx_active_ptr.unwrap_or_else(|| panic!("!{} is null", stringify!(tx_active_ptr))),
         )
     };
     let tx_num_buffers = unsafe { NET_CONFIG.virt_tx.num_buffers };
@@ -177,7 +211,8 @@ impl Handler for HandlerImpl {
                 if !self.drv.tx_is_full() && !self.tx.active.is_empty() {
                     let mut buffer: NetBuffDesc = NetBuffDesc::new(0, 0);
                     self.tx.active.dequeue(&mut buffer);
-                    self.drv.transmit(buffer.io_or_offset as usize, buffer.len.into());
+                    self.drv
+                        .transmit(buffer.io_or_offset as usize, buffer.len.into());
                 } else {
                     break;
                 }

@@ -94,7 +94,7 @@ impl TxRing {
         desc.mark_frame_end();
         desc.mark_gem_owned();
 
-        self.tail +=1;
+        self.tail += 1;
     }
 
     pub fn get_buffer(&mut self) -> usize {

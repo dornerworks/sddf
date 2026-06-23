@@ -14,8 +14,8 @@ use zynqmp_hal::gem::{Device, MacAddress, Running};
 mod dma;
 mod sel4_interfaces;
 
-use dma::{DmaPtrs, DmaPtr, GemDmaPtrs, RxRing, TxDummy, TxRing};
 pub use dma::{DmaDef, MTU};
+use dma::{DmaPtr, DmaPtrs, GemDmaPtrs, RxRing, TxDummy, TxRing};
 
 pub struct Driver {
     pub dev: Device<Running>,
@@ -33,9 +33,15 @@ pub enum IrqType {
 const MAC: [u8; 6] = [0x00, 0x0A, 0x35, 0x03, 0x78, 0xA1];
 
 impl Driver {
-    pub fn new(ptr: *mut (), rx_vaddr: *mut (), tx_vaddr: *mut (), tx_dummy_vaddr: *mut (), rx_paddr: *mut (), tx_paddr: *mut (),
-        tx_dummy_paddr: *mut ()) -> Self {
-
+    pub fn new(
+        ptr: *mut (),
+        rx_vaddr: *mut (),
+        tx_vaddr: *mut (),
+        tx_dummy_vaddr: *mut (),
+        rx_paddr: *mut (),
+        tx_paddr: *mut (),
+        tx_dummy_paddr: *mut (),
+    ) -> Self {
         info!("Initializing Driver");
         let dma_ptrs = GemDmaPtrs {
             rx: DmaPtrs {
