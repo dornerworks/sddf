@@ -159,13 +159,10 @@ impl Handler for HandlerImpl {
     fn notified(&mut self, channels: ChannelSet) -> Result<(), Self::Error> {
         if channels.contains(self.client_channel) || channels.contains(self.device_channel) {
             let mut notify_client = false;
-            loop {
-                if !self.drv.rx_is_full() && !self.rx.free.is_empty() {
-                    let mut buffer: NetBuffDesc = NetBuffDesc::new(0, 0);
-                    self.rx.free.dequeue(&mut buffer);
-                    self.drv.rx_mark_done(buffer.io_or_offset as usize);
-                } else {
-                    break;
+            while !self.drv.rx_is_full() && !self.rx.free.is_empty() {
+                match self.rx.free.dequeue() {
+                    Some(buffer) => self.drv.rx_mark_done(buffer.io_or_offset as usize),
+                    None => break,
                 }
             }
 
@@ -176,11 +173,13 @@ impl Handler for HandlerImpl {
             }
 
             // TODO: Split up device handling vs client handling?
-            for _ in 0..self.rx.capacity {
+            while !self.rx.active.is_full() {
                 match self.drv.receive() {
                     Some(packet) => {
                         let buffer = NetBuffDesc::new(packet.0 as u64, packet.1 as u16);
-                        let _ = self.rx.active.enqueue(buffer);
+                        if self.rx.active.enqueue(buffer).is_err() {
+                            break;
+                        }
                     }
                     None => break,
                 }
@@ -191,13 +190,10 @@ impl Handler for HandlerImpl {
                 }
             }
 
-            loop {
-                if !self.drv.tx_is_empty() {
-                    let mut buffer: NetBuffDesc = NetBuffDesc::new(0, 0);
-                    buffer.set_io_or_offset(self.drv.tx_get_buffer() as u64);
-                    buffer.set_len(0);
-                    let _ = self.tx.free.enqueue(buffer);
-                } else {
+            while !self.drv.tx_is_empty() {
+                let io = self.drv.tx_get_buffer() as u64;
+                let buffer = NetBuffDesc::new(io, 0);
+                if self.tx.free.enqueue(buffer).is_err() {
                     break;
                 }
 
@@ -207,14 +203,12 @@ impl Handler for HandlerImpl {
                 }
             }
 
-            loop {
-                if !self.drv.tx_is_full() && !self.tx.active.is_empty() {
-                    let mut buffer: NetBuffDesc = NetBuffDesc::new(0, 0);
-                    self.tx.active.dequeue(&mut buffer);
-                    self.drv
-                        .transmit(buffer.io_or_offset as usize, buffer.len.into());
-                } else {
-                    break;
+            while !self.drv.tx_is_full() && !self.tx.active.is_empty() {
+                match self.tx.active.dequeue() {
+                    Some(buffer) => self
+                        .drv
+                        .transmit(buffer.io_or_offset as usize, buffer.len.into()),
+                    None => break,
                 }
             }
 
