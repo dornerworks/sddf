@@ -71,9 +71,7 @@ impl TxRing {
     }
 
     fn setup(&mut self) {
-        for (_i, entry) in self.iter_mut().enumerate() {
-            entry.mark_sw_owned();
-        }
+        self.iter_mut().for_each(|entry| entry.mark_sw_owned());
         self.last_mut().unwrap().mark_last();
     }
 
