@@ -6,8 +6,8 @@
   description = "A flake for building sDDF";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
-    sdfgen.url = "github:au-ts/microkit_sdf_gen/0.33.0";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+    sdfgen.url = "github:au-ts/microkit_sdf_gen/0.35.1";
     sdfgen.inputs.nixpkgs.follows = "nixpkgs";
     systems-ci.url = "github:au-ts/systems-ci/main";
     systems-ci.flake = false;
@@ -21,8 +21,8 @@
       ...
     }:
     let
-      microkit-version = "2.2.0";
-      microkit-url = "https://github.com/seL4/microkit/releases/download/2.2.0/";
+      microkit-version = "2.3.1";
+      microkit-url = "https://github.com/seL4/microkit/releases/download/2.3.1/";
       microkit-platforms = {
         aarch64-darwin = "macos-aarch64";
         x86_64-darwin = "macos-x86-64";
@@ -52,7 +52,7 @@
 
           clang-complete = (pkgs.symlinkJoin {
             name = "clang-complete";
-            paths = llvm.clang-unwrapped.all;
+            paths = [ llvm.clang-unwrapped.out llvm.clang-unwrapped.lib llvm.clang-unwrapped.python ];
             meta.mainProgram = "clang";
 
             # Clang searches up from the directory where it sits to find its built-in
@@ -72,6 +72,9 @@
               cp --remove-destination -- ${llvm.clang-unwrapped}/bin/* $out/bin/
             '';
           });
+
+          # pancake/cakeml compiler
+          pancake = pkgs.callPackage ./ci/cakeml.nix { };
 
           genmc = pkgs.callPackage ./ci/genmc/nix/package.nix { inherit clang-complete; llvm = pkgs.llvmPackages_20.llvm; };
 
@@ -116,10 +119,10 @@
               url = "${microkit-url}/microkit-sdk-${microkit-version}-${microkit-platform}.tar.gz";
               hash =
                 {
-                  aarch64-darwin = "sha256-UZBEwS3vAQqJe6Xj+13smJRS0RYfoc0uCK7hB8ujbvA=";
-                  x86_64-darwin = "sha256-aE2mYToK2ne9vzw6d3YQDzJvhpnI8IHOR9+VqZxwlfY=";
-                  aarch64-linux = "sha256-U1hA7Vk/TlSWgV7KiEeG7AkA7t5IR/x89mSE0YHBRNA=";
-                  x86_64-linux = "sha256-dxPu2Q01qjKhME6Z6kgG4ASDUe12ytZmh5tCtFva/L0=";
+                  aarch64-darwin = "sha256-UlAFbkVcJWcG+aCDlEK5q60j6+wPVUkQzxmHEM64xZ4=";
+                  x86_64-darwin = "sha256-paHtORN9WeMfK0RyfXYbcEuS21MRASA0ADfpgDvF2Nk=";
+                  aarch64-linux = "sha256-ZmzGNh5T92MZq7l43CywwbklRPN54TdpTx5h3Klbzwg=";
+                  x86_64-linux = "sha256-g4kIyso3X9wUlprpCHCk2TFuMLM9tmpfUDftxSs9yzs=";
                 }
                 .${system} or (throw "Unsupported system: ${system}");
             };
@@ -140,6 +143,7 @@
               llvm.libllvm
               dtc
               pythonTool
+              pancake
             ];
 
             # To avoid Nix adding compiler flags that are not available on a freestanding

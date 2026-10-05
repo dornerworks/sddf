@@ -31,6 +31,7 @@ AR := ${TRIPLE}-ar
 OBJCOPY := ${TRIPLE}-objcopy
 OBJDUMP := ${TRIPLE}-objdump
 SIZE := ${TRIPLE}-size
+CPP := ${TRIPLE}-cpp
 
 OPTIMISATION ?= -g -O2
 
@@ -38,6 +39,7 @@ CFLAGS += \
 	-MD \
 	-mstrict-align \
 	-ffreestanding \
+	-std=gnu17 \
 	${OPTIMISATION} \
 	-Wall \
 	${CFLAGS_ARCH} \

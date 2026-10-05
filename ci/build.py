@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 
 import argparse
+from itertools import chain
 import os
 from pathlib import Path
 import shutil
@@ -25,6 +26,11 @@ def build_make(args: argparse.Namespace, test_config: common.TestConfig):
     build_dir = common.example_build_path(test_config)
     example_dir = get_example_dir(test_config.example)
 
+    if args.pancake:
+        pancake_args = ["PANCAKE_SERIAL_DRIVER=1"]
+    else:
+        pancake_args = []
+
     subprocess.run(
         [
             "make",
@@ -34,7 +40,8 @@ def build_make(args: argparse.Namespace, test_config: common.TestConfig):
             f"MICROKIT_SDK={args.microkit_sdk}",
             f"MICROKIT_BOARD={test_config.board}",
             f"MICROKIT_CONFIG={test_config.config}",
-        ],
+        ]
+        + pancake_args,
         check=True,
     )
 
@@ -111,28 +118,8 @@ def build(args: argparse.Namespace, test_config: common.TestConfig):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__)
-
-    parser.add_argument("microkit_sdk")
-    parser.add_argument("num_jobs", nargs="?", type=int, default=os.cpu_count())
-    parser.add_argument(
-        "--examples",
-        default=set(matrix.EXAMPLES.keys()),
-        action=ArgparseActionList,
-    )
-    parser.add_argument(
-        "--no-clean",
-        action="store_true",
-        help="Do not remove any pre-existing CI build directory before building",
-    )
-
-    args = parser.parse_args()
-
-    for example_name, options in matrix.EXAMPLES.items():
-        if example_name not in args.examples:
-            continue
-
-        matrix = set(
+    tests = set(
+        chain.from_iterable(
             matrix_product(
                 common.TestConfig,
                 example=[example_name],
@@ -143,6 +130,55 @@ if __name__ == "__main__":
                 backend_fn=[None],
                 no_output_timeout_s=[None],
             )
+            for example_name, options in matrix.EXAMPLES.items()
         )
-        for test_config in matrix:
-            build(args, test_config)
+    )
+
+    parser = argparse.ArgumentParser(description=__doc__)
+
+    parser.add_argument("microkit_sdk")
+    parser.add_argument("num_jobs", nargs="?", type=int, default=os.cpu_count())
+    parser.add_argument(
+        "--no-clean",
+        action="store_true",
+        help="Do not remove any pre-existing CI build directory before building",
+    )
+    parser.add_argument(
+        "--pancake", action="store_true", help="Use Pancake implementations"
+    )
+
+    filters = parser.add_argument_group(title="filters")
+    filters.add_argument(
+        "--examples",
+        default=set(matrix.EXAMPLES.keys()),
+        action=ArgparseActionList,
+    )
+    filters.add_argument(
+        "--boards",
+        default={test.board for test in tests},
+        action=ArgparseActionList,
+    )
+    filters.add_argument(
+        "--configs",
+        default={test.config for test in tests},
+        action=ArgparseActionList,
+    )
+    filters.add_argument(
+        "--build-systems",
+        default={test.build_system for test in tests},
+        action=ArgparseActionList,
+    )
+    filters.add_argument(
+        "--only-qemu",
+        action=argparse.BooleanOptionalAction,
+        help="select only QEMU tests",
+    )
+
+    args = parser.parse_args()
+
+    filter_args = argparse.Namespace(
+        **{a.dest: getattr(args, a.dest) for a in filters._group_actions}
+    )
+
+    for test_config in common.subset_test_cases(tests, filter_args):
+        build(args, test_config)

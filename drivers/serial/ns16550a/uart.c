@@ -23,20 +23,6 @@ serial_queue_handle_t tx_queue_handle;
 /* UART device registers */
 volatile uintptr_t uart_base;
 
-/* TODO: Use the value from the device tree*/
-#if defined(CONFIG_PLAT_STAR64) || defined(CONFIG_PLAT_CHESHIRE) || defined(CONFIG_PLAT_BCM2711)                       \
-    || defined(CONFIG_PLAT_HIFIVE_P550) || defined(CONFIG_PLAT_RK3568)
-#define REG_IO_WIDTH 4
-#define REG_SHIFT 2
-#define REG_PTR(off)     ((volatile uint32_t *)((uart_base) + (off << REG_SHIFT)))
-#elif defined(CONFIG_PLAT_QEMU_RISCV_VIRT)
-#define REG_IO_WIDTH 1
-#define REG_SHIFT 0
-#define REG_PTR(off)     ((volatile uint8_t *)((uart_base) + (off << REG_SHIFT)))
-#else
-#error "unknown platform reg-io-width"
-#endif
-
 static inline bool tx_fifo_not_full(void)
 {
 #if UART_DW_APB_REGISTERS && !defined(CONFIG_PLAT_HIFIVE_P550)
@@ -201,7 +187,7 @@ void init(void)
     uart_base = (uintptr_t)device_resources.regions[0].region.vaddr;
 
     /* Ensure that the FIFO's are empty */
-    while (!(*REG_PTR(UART_LSR) & (UART_LSR_THRE | UART_LSR_TEMT)));
+    while (~(*REG_PTR(UART_LSR)) & (UART_LSR_THRE | UART_LSR_TEMT));
 
     /* Disable all interrupts for now */
     *REG_PTR(UART_IER) = 0;

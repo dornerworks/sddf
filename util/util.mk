@@ -15,7 +15,7 @@ ifeq ($(strip $(ARCH)),)
 $(error ARCH must be specified)
 endif
 
-OBJS_LIBUTIL := cache.o sddf_printf.o assert.o bitarray.o fsmalloc.o
+OBJS_LIBUTIL := cache.o sddf_printf.o assert.o bitarray.o fsmalloc.o arch_timestamp_counter.o
 
 ifeq ($(strip $(SDDF_CUSTOM_LIBC)),1)
 	CFLAGS += -I${SDDF}/include/sddf/util/custom_libc
@@ -43,19 +43,19 @@ libsddf_util.a: ${BASE_OBJS_LIBUTIL} util/putchar_serial.o
 	${AR} crv $@ $^
 	${RANLIB} $@
 
-util/sddf_printf.o: ${SDDF}/util/printf.c | $(SDDF_LIBC_INCLUDE)
+util/sddf_printf.o: ${SDDF}/util/printf.c | util $(SDDF_LIBC_INCLUDE)
 	${CC} ${CFLAGS} -c -o $@ $<
 
-util/%.o: ${SDDF}/util/%.c | $(SDDF_LIBC_INCLUDE)
+util/%.o: ${SDDF}/util/%.c | util $(SDDF_LIBC_INCLUDE)
 	${CC} ${CFLAGS} -c -o $@ $<
 
-util/custom_libc/%.o: ${SDDF}/util/custom_libc/%.c | $(SDDF_LIBC_INCLUDE)
+util/custom_libc/%.o: ${SDDF}/util/custom_libc/%.c | util $(SDDF_LIBC_INCLUDE)
 	${CC} ${CFLAGS} -c -o $@ $<
 
-util/custom_libc/%.o: ${SDDF}/util/custom_libc/${ARCH}/%.S
+util/custom_libc/%.o: ${SDDF}/util/custom_libc/${ARCH}/%.S | util/custom_libc
 	${CC} ${CFLAGS} -c -o $@ $<
 
-util/custom_libc/%.o: ${SDDF}/util/custom_libc/${ARCH}/%.c | $(SDDF_LIBC_INCLUDE)
+util/custom_libc/%.o: ${SDDF}/util/custom_libc/${ARCH}/%.c | util/custom_libc $(SDDF_LIBC_INCLUDE)
 	${CC} ${CFLAGS} -c -o $@ $<
 
 util:

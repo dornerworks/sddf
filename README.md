@@ -10,7 +10,8 @@ The seL4 Device Driver Framework (sDDF) aims to provide interfaces and protocols
 for writing and porting device drivers to run as seL4 user level programs.
 
 The sDDF is currently under-going active research and development and is largely
-experimental software.
+experimental software. For more details, please see our [LionsOS Roadmap](
+https://lionsos.org/docs/status_and_roadmap/).
 
 We are working on developing the protocols and interfaces for various device
 classes such as:
@@ -31,11 +32,11 @@ website [here](https://trustworthy.systems/projects/drivers/).
 
 ## Dependencies
 
-* [Microkit SDK 2.2.0](https://github.com/seL4/microkit/releases/tag/2.2.0)
+* [Microkit SDK 2.3.1](https://github.com/seL4/microkit/releases/tag/2.3.1)
 * GNU Make
 * Clang and LLVM bintools
 * Device Tree Compiler
-* Python (3.9 or higher)
+* Python (3.10 or higher)
 
 See the instructions below for installing the rest of the dependencies based on
 your machine:
@@ -46,7 +47,7 @@ On apt based Linux distributions run the following commands:
 
 ```sh
 sudo apt install make clang llvm lld device-tree-compiler python3 python3-pip
-pip3 install sdfgen==0.33.0
+pip3 install sdfgen==0.35.0
 ```
 
 If you get `error: externally-managed-environment` when installing via pip,
@@ -54,14 +55,14 @@ instead run:
 ```sh
 # sdfgen is an isolated package and does not depend on anything
 # else so it will not break any system packages.
-pip3 install --break-system-packages sdfgen==0.33.0
+pip3 install --break-system-packages sdfgen==0.35.0
 ```
 
 #### Microkit SDK
 
 ```sh
-wget https://github.com/seL4/microkit/releases/download/2.2.0/microkit-sdk-2.2.0-linux-x86-64.tar.gz
-tar xf microkit-sdk-2.2.0-linux-x86-64.tar.gz
+wget https://github.com/seL4/microkit/releases/download/2.3.1/microkit-sdk-2.3.1-linux-x86-64.tar.gz
+tar xf microkit-sdk-2.3.1-linux-x86-64.tar.gz
 ```
 
 ### Homebrew
@@ -69,7 +70,7 @@ tar xf microkit-sdk-2.2.0-linux-x86-64.tar.gz
 On macOS, you can install the dependencies via Homebrew:
 ```sh
 brew install llvm lld make dtc python3
-pip3 install sdfgen==0.33.0
+pip3 install sdfgen==0.35.0
 ```
 
 If you get `error: externally-managed-environment` when installing via pip,
@@ -77,21 +78,21 @@ instead run:
 ```sh
 # sdfgen is an isolated package and does not depend on anything
 # else so it will not break any system packages.
-pip3 install --break-system-packages sdfgen==0.33.0
+pip3 install --break-system-packages sdfgen==0.35.0
 ```
 
 #### Microkit SDK
 
 For Apple Silicon:
 ```sh
-wget https://github.com/seL4/microkit/releases/download/2.2.0/microkit-sdk-2.2.0-macos-aarch64.tar.gz
-tar xf microkit-sdk-2.2.0-macos-aarch64.tar.gz
+wget https://github.com/seL4/microkit/releases/download/2.3.1/microkit-sdk-2.3.1-macos-aarch64.tar.gz
+tar xf microkit-sdk-2.3.1-macos-aarch64.tar.gz
 ```
 
 For Intel:
 ```sh
-wget https://github.com/seL4/microkit/releases/download/2.2.0/microkit-sdk-2.2.0-macos-x86-64.tar.gz
-tar xf microkit-sdk-2.2.0-macos-x86-64.tar.gz
+wget https://github.com/seL4/microkit/releases/download/2.3.1/microkit-sdk-2.3.1-macos-x86-64.tar.gz
+tar xf microkit-sdk-2.3.1-macos-x86-64.tar.gz
 ```
 
 ### Nix

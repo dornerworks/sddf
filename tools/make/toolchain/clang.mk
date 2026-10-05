@@ -11,6 +11,8 @@ AR := llvm-ar
 OBJCOPY := llvm-objcopy
 OBJDUMP := llvm-objdump
 SIZE := llvm-size
+# clang-cpp may not be available
+CPP := clang -E -
 
 OPTIMISATION ?= -g3 -O2
 
@@ -38,6 +40,7 @@ CFLAGS_ARCH += -target $(TARGET)
 CFLAGS += \
 	-MD \
 	-ffreestanding \
+	-std=gnu17 \
 	${CFLAGS_ARCH} \
 	${OPTIMISATION} \
 	-Wall \

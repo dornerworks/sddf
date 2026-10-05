@@ -19,8 +19,9 @@
 #define PCI_DATA_PORT_ID 2
 #define PCI_DATA_PORT_ADDR 0xCFC
 
-/* Multiplier for virtIO queue kick mechanism. */
-uint32_t nftn_multiplier;
+/* Multiplier for virtIO queue kick mechanism.
+ * See https://github.com/qemu/qemu/blob/4ee536fac748b70e6f3d8568ddd20cfbaa9cf7bf/hw/virtio/virtio-pci.c#L365 */
+uint32_t nftn_multiplier = 4;
 
 uint32_t pci_compute_port_address(uint8_t bus, uint8_t dev, uint8_t func, uint8_t off)
 {
@@ -168,6 +169,7 @@ bool virtio_transport_probe(device_resources_t *device_resources, virtio_device_
 {
     assert(device_resources_check_magic(device_resources));
 
+#ifndef SDDF_VIRTIO_PCI_TRANSPORT_SKIP_BUS_CHECK
     uint8_t bus = device_handle_ret->pci_bus;
     uint8_t dev = device_handle_ret->pci_dev;
     uint8_t func = device_handle_ret->pci_func;
@@ -202,6 +204,7 @@ bool virtio_transport_probe(device_resources_t *device_resources, virtio_device_
     }
 
     pci_debug_print_header(bus, dev, func, &pci_device_header);
+#endif
 
     return true;
 }
@@ -243,11 +246,23 @@ void virtio_transport_set_driver_features(virtio_device_handle_t *device_handle,
     cfg->driver_feature = driver_features;
 }
 
+uint16_t virtio_transport_queue_get_capacity(virtio_device_handle_t *device_handle, uint32_t select)
+{
+    virtio_pci_common_cfg_t *cfg = get_cfg(device_handle->device_resources);
+    cfg->queue_select = select;
+    return cfg->queue_size;
+}
+
 bool virtio_transport_queue_setup(virtio_device_handle_t *device_handle, uint32_t select, uint16_t size, uint64_t desc,
                                   uint64_t driver, uint64_t device)
 {
-    virtio_pci_common_cfg_t *cfg = get_cfg(device_handle->device_resources);
+    uint16_t hw_max_capacity = virtio_transport_queue_get_capacity(device_handle, select);
+    if (size > hw_max_capacity) {
+        LOG_VIRTIO_ERR("Requested queue size %u is larger than host's max %u!\n", size, hw_max_capacity);
+        return false;
+    }
 
+    virtio_pci_common_cfg_t *cfg = get_cfg(device_handle->device_resources);
     cfg->queue_select = select;
     cfg->queue_size = size;
     cfg->queue_desc = desc;

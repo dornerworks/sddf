@@ -363,9 +363,7 @@ static void eth_setup(void)
     eth->dmacr = dmacr;
 
     /* 5. Initialise buffer descriptors */
-    /* RX descriptors are initialised by rx_provide() before NIC is enabled */
-
-    /* TX descriptors must started as SW owned */
+    /* Rx and TX descriptors must start as SW owned */
     for (uint32_t i = 0; i < tx.capacity; i++) {
         volatile struct descriptor *d = &(tx.descr[i]);
         d->addr = 0;
@@ -375,6 +373,21 @@ static void eth_setup(void)
             d->stat |= TXD_WRAP;
         }
     }
+
+    for (uint32_t i = 0; i < rx.capacity; i++) {
+        volatile struct descriptor *d = &(rx.descr[i]);
+        d->addr = RXD_OWN; /* SW owns initially */
+        d->stat = 0;
+        d->addr_hi = 0;
+        if (i == tx.capacity - 1) {
+            d->addr |= RXD_WRAP;
+        }
+    }
+
+    /* Ensure all writes to the descriptor are ordered before we restart the
+     * receiver.
+     */
+    wwmb();
 
     /* 6. Configure buffer descriptor queue addresses
      * Upper address registers are cleared assuming 32-bit addresses.
@@ -396,9 +409,8 @@ static void eth_setup(void)
     /* 7. Enable RX/TX interrupts */
     eth->ier = ZYNQ_INT_RXC | ZYNQ_INT_TXC;
 
-    /* 8. Enable MDIO and transmitter (receiver enabled later after buffer init) */
-    eth->nwctrl |= ZYNQ_GEM_NWCTRL_MDEN_MASK;
-    eth->nwctrl |= ZYNQ_GEM_NWCTRL_TXEN_MASK;
+    /* 8. Enable MDIO, transmitter and receiver */
+    eth->nwctrl |= ZYNQ_GEM_NWCTRL_MDEN_MASK | ZYNQ_GEM_NWCTRL_TXEN_MASK | ZYNQ_GEM_NWCTRL_RXEN_MASK;
 }
 
 void init(void)
@@ -421,9 +433,6 @@ void init(void)
 
     rx_provide();
     tx_provide();
-
-    /* Now that buffers are in the descriptor ring, enable the receiver */
-    eth->nwctrl |= ZYNQ_GEM_NWCTRL_RXEN_MASK;
 }
 
 void notified(microkit_channel ch)
