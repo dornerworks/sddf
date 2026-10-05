@@ -18,5 +18,5 @@ sel4-driver-interfaces = { git = "https://github.com/seL4/rust-sel4", tag = "v3.
 sel4-shared-memory = { git = "https://github.com/seL4/rust-sel4", tag = "v3.0.0" }
 sel4-logging = { git = "https://github.com/seL4/rust-sel4", tag = "v3.0.0" }
 sel4-microkit = { git = "https://github.com/seL4/rust-sel4", tag = "v3.0.0", default-features = false }
-sel4-sddf-netqueue = { git = "https://github.com/dornerworks/sel4-sddf-netqueue" }
+sel4-sddf-netqueue = { git = "https://github.com/dornerworks/sel4-sddf-netqueue", branch = "dev-tyler" }
 ptr_meta = { version = "0.3.1", default-features = false }
