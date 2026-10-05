@@ -14,6 +14,6 @@ license = "BSD-2-Clause"
 [dependencies]
 log = "0.4.17"
 tock-registers = "0.9.0"
-eth_phy = { git = "https://github.com/dornerworks/zynqmp_hal.git" }
-zynqmp_hal = { git = "https://github.com/dornerworks/zynqmp_hal.git" }
+eth_phy = { git = "https://github.com/dornerworks/zynqmp_hal.git", branch = "dev-tyler" }
+zynqmp_hal = { git = "https://github.com/dornerworks/zynqmp_hal.git", branch = "dev-tyler" }
 sel4-driver-interfaces = { git = "https://github.com/seL4/rust-sel4", tag = "v3.0.0" }
