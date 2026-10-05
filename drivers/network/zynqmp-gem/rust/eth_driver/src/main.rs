@@ -26,8 +26,9 @@ mod config;
 fn init<'a>() -> HandlerImpl {
     config::log::LOGGER.set().unwrap();
     info!("Running Ethernet Driver");
-    let rx_notify: fn() = || config::channels::DEVICE.notify();
-    let tx_notify: fn() = || config::channels::CLIENT.notify();
+    let irq_channel = Channel::new(unsafe { DEVICE_RESOURCES.irqs[0].id } as usize);
+    let virt_rx_channel = Channel::new(unsafe { NET_CONFIG.virt_rx.id } as usize);
+    let virt_tx_channel = Channel::new(unsafe { NET_CONFIG.virt_tx.id } as usize);
 
     debug!("RX Free Vaddr is   {:#?}", unsafe {
         NET_CONFIG.virt_rx.free_queue.vaddr
@@ -69,10 +70,9 @@ fn init<'a>() -> HandlerImpl {
     });
     debug!("TX ID is           {:x }", unsafe { NET_CONFIG.virt_tx.id });
 
-    debug!("rx_notify is {:#?}", rx_notify);
-    debug!("DEVICE is {:#?}", config::channels::DEVICE);
-    debug!("tx_notify is {:#?}", tx_notify);
-    debug!("CLIENT is {:#?}", config::channels::CLIENT);
+    debug!("irq_channel is {:#?}", irq_channel);
+    debug!("virt_rx_channel is {:#?}", virt_rx_channel);
+    debug!("virt_tx_channel is {:#?}", virt_tx_channel);
 
     debug!("DEVICE_RESOURCES {} vaddr {:#?}", 0, unsafe {
         DEVICE_RESOURCES.regions[0].region.vaddr
@@ -133,15 +133,16 @@ fn init<'a>() -> HandlerImpl {
     info!("Finished Initializing Driver");
     dev.handle_interrupt();
     info!("Acked driver IRQ");
-    config::channels::DEVICE.irq_ack().unwrap();
+    irq_channel.irq_ack().unwrap();
     info!("Acked physical IRQ");
 
     HandlerImpl {
         drv: dev,
         rx: rx_handle,
         tx: tx_handle,
-        client_channel: config::channels::CLIENT,
-        device_channel: config::channels::DEVICE,
+        irq_channel,
+        virt_rx_channel,
+        virt_tx_channel,
     }
 }
 
@@ -149,16 +150,20 @@ struct HandlerImpl {
     drv: Driver,
     rx: NetQueueHandle<'static>,
     tx: NetQueueHandle<'static>,
-    client_channel: sel4_microkit::Channel,
-    device_channel: sel4_microkit::Channel,
+    irq_channel: sel4_microkit::Channel,
+    virt_rx_channel: sel4_microkit::Channel,
+    virt_tx_channel: sel4_microkit::Channel,
 }
 
 impl Handler for HandlerImpl {
     type Error = Infallible;
 
     fn notified(&mut self, channels: ChannelSet) -> Result<(), Self::Error> {
-        if channels.contains(self.client_channel) || channels.contains(self.device_channel) {
-            let mut notify_client = false;
+        if channels.contains(self.virt_rx_channel)
+            || channels.contains(self.virt_tx_channel)
+            || channels.contains(self.irq_channel)
+        {
+            let mut notify_rx = false;
             while !self.drv.rx_is_full() && !self.rx.free.is_empty() {
                 match self.rx.free.dequeue() {
                     Some(buffer) => self.drv.rx_mark_done(buffer.io_or_offset as usize),
@@ -186,7 +191,7 @@ impl Handler for HandlerImpl {
 
                 if self.rx.active.require_signal() {
                     self.rx.active.cancel_signal();
-                    notify_client = true;
+                    notify_rx = true;
                 }
             }
 
@@ -199,7 +204,7 @@ impl Handler for HandlerImpl {
 
                 if self.rx.active.require_signal() {
                     self.rx.active.cancel_signal();
-                    notify_client = true;
+                    notify_rx = true;
                 }
             }
 
@@ -214,12 +219,12 @@ impl Handler for HandlerImpl {
 
             self.tx.active.request_signal();
 
-            if notify_client {
-                self.client_channel.notify();
+            if notify_rx {
+                self.virt_rx_channel.notify();
             }
 
             self.drv.handle_interrupt();
-            self.device_channel.irq_ack().unwrap();
+            self.irq_channel.irq_ack().unwrap();
         }
         Ok(())
     }
