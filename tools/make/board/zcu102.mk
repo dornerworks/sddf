@@ -8,6 +8,7 @@
 PLATFORM := zynqmp
 # I2C_DRIV_DIR := ${PLATFORM}
 NET_DRIV_DIR := zynqmp-gem
+NETWORK_DRIVER ?= c
 ETH_DRIV := eth_driver_znyqmp_gem.elf
 TIMER_DRIV_DIR := cdns
 UART_DRIV_DIR := ${PLATFORM}

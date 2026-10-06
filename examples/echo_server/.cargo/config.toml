@@ -1,0 +1,11 @@
+#
+# Copyright 2026, DornerWorks
+#
+# SPDX-License-Identifier: BSD-2-Clause
+#
+# Rust settings for this example's Rust components (currently the zynqmp-gem
+# Ethernet driver, selected in echo.mk). The available targets are in
+# $(SDDF)/support/targets.
+
+[build]
+target = "../../support/targets/aarch64-sel4-microkit-minimal.json"

@@ -47,6 +47,12 @@ UART_DRIVER := $(SDDF)/drivers/serial/$(UART_DRIV_DIR)
 TIMER_DRIVER := $(SDDF)/drivers/timer/$(TIMER_DRIV_DIR)
 NETWORK_COMPONENTS := $(SDDF)/network/components
 
+ifdef NETWORK_DRIVER
+ifeq ($(NETWORK_DRIVER),rust)
+ETH_CARGO_CONFIG := $(ECHO_SERVER)/.cargo/config.toml
+endif
+endif
+
 SDDF_CUSTOM_LIBC := 1
 
 vpath %.c ${SDDF} ${ECHO_SERVER}

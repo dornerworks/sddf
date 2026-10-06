@@ -1,7 +1,6 @@
 {
     "compatible": [
-        "xlnx,zynqmp-gem",
-        "cdns,gem"
+        "xlnx,zynqmp-gem"
     ],
     "resources": {
         "regions": [

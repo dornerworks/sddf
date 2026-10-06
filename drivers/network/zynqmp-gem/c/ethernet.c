@@ -418,7 +418,7 @@ void init(void)
     assert(net_config_check_magic(&config));
     assert(device_resources_check_magic(&device_resources));
     assert(device_resources.num_irqs == 1);
-    assert(device_resources.num_regions == 3);
+    assert(device_resources.num_regions == 4);
 
     /* All buffers should fit within our DMA region, plus one for queue1 terminator */
     assert((RX_COUNT + 1) * sizeof(struct descriptor) <= device_resources.regions[1].region.size);
