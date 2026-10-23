@@ -18,6 +18,10 @@
             {
                 "name": "device_tx_ring",
                 "size": 32768
+            },
+            {
+                "name": "device_tx_dummy",
+                "size": 4096
             }
         ],
         "irqs": [
