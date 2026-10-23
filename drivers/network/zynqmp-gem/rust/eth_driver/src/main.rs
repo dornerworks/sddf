@@ -99,7 +99,7 @@ fn init<'a>() -> HandlerImpl {
         )
     };
     let rx_num_buffers = unsafe { NET_CONFIG.virt_rx.num_buffers };
-    let rx_handle = NetQueueHandle::from_ptrs(rx_free, rx_active, rx_num_buffers.into(), false);
+    let rx_handle = NetQueueHandle::from_ptrs(rx_free, rx_active, rx_num_buffers.into(), None);
 
     let tx_free_ptr =
         NonNull::new(unsafe { NET_CONFIG.virt_tx.free_queue.vaddr } as *mut RawNetQueue);
@@ -116,7 +116,7 @@ fn init<'a>() -> HandlerImpl {
         )
     };
     let tx_num_buffers = unsafe { NET_CONFIG.virt_tx.num_buffers };
-    let tx_handle = NetQueueHandle::from_ptrs(tx_free, tx_active, tx_num_buffers.into(), false);
+    let tx_handle = NetQueueHandle::from_ptrs(tx_free, tx_active, tx_num_buffers.into(), None);
 
     let mut dev = {
         Driver::new(
