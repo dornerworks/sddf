@@ -164,6 +164,7 @@ impl Handler for HandlerImpl {
             || channels.contains(self.irq_channel)
         {
             let mut notify_rx = false;
+            let mut notify_tx = false;
             while !self.drv.rx_is_full() && !self.rx.free.is_empty() {
                 match self.rx.free.dequeue() {
                     Some(buffer) => self.drv.rx_mark_done(buffer.io_or_offset as usize),
@@ -206,9 +207,9 @@ impl Handler for HandlerImpl {
                     None => break,
                 }
 
-                if self.rx.active.require_signal() {
-                    self.rx.active.cancel_signal();
-                    notify_rx = true;
+                if self.tx.free.require_signal() {
+                    self.tx.free.cancel_signal();
+                    notify_tx = true;
                 }
             }
 
@@ -233,6 +234,10 @@ impl Handler for HandlerImpl {
 
             if notify_rx {
                 self.virt_rx_channel.notify();
+            }
+
+            if notify_tx {
+                self.virt_tx_channel.notify();
             }
 
             self.drv.handle_interrupt();
