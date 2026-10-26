@@ -95,14 +95,18 @@ impl TxRing {
         self.tail += 1;
     }
 
-    pub fn get_buffer(&mut self) -> usize {
+    pub fn get_used_buffer(&mut self) -> Option<usize> {
         let entries_len = self.len();
         let index = self.head % entries_len;
         let entry = self.get_mut(index).unwrap();
-        entry.mark_sw_owned();
-        let addr = entry.addr() as usize;
-        self.head += 1;
-        addr
+        if entry.is_available() {
+             entry.mark_sw_owned();
+             let addr = entry.addr() as usize;
+             self.head += 1;
+             Some(addr)
+        } else {
+             None
+        }
     }
 
     pub fn is_empty(&self) -> bool {

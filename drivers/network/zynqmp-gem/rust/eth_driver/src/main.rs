@@ -196,10 +196,14 @@ impl Handler for HandlerImpl {
             }
 
             while !self.drv.tx_is_empty() {
-                let io = self.drv.tx_get_buffer() as u64;
-                let buffer = NetBuffDesc::new(io, 0);
-                if self.tx.free.enqueue(buffer).is_err() {
-                    break;
+                match self.drv.tx_get_buffer() {
+                    Some(io) => {
+                        let buffer = NetBuffDesc::new(io as u64, 0);
+                        if self.tx.free.enqueue(buffer).is_err() {
+                            break;
+                        }
+                    }
+                    None => break,
                 }
 
                 if self.rx.active.require_signal() {
@@ -208,13 +212,21 @@ impl Handler for HandlerImpl {
                 }
             }
 
+            let mut tx_buffer_filled = false;
             while !self.drv.tx_is_full() && !self.tx.active.is_empty() {
                 match self.tx.active.dequeue() {
-                    Some(buffer) => self
-                        .drv
-                        .transmit(buffer.io_or_offset as usize, buffer.len.into()),
+                    Some(buffer) => {
+                        self
+                            .drv
+                            .tx_fill_buffer(buffer.io_or_offset as usize, buffer.len.into());
+                        tx_buffer_filled = true;
+                    }
                     None => break,
                 }
+            }
+
+            if tx_buffer_filled {
+                self.drv.transmit();
             }
 
             self.tx.active.request_signal();
