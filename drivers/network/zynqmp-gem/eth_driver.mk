@@ -7,10 +7,9 @@
 # the zynqmp-gem NIC driver
 #
 # There are two implementations of this driver, selected with NETWORK_DRIVER:
-#    c:    (default) the C driver in c/
-#    rust: the Rust driver in rust/. The project must also set
-#          ETH_CARGO_CONFIG to its .cargo/config.toml, which picks the target
-#          spec (from $(SDDF)/support/targets) to build for.
+#    c:    (default) the C driver in c/.
+#    rust: the Rust driver in rust/.
+#    pancake: the Pancake driver in pancake/.
 #
 # NOTES
 #  Generates eth_driver_znyqmp_gem.elf
@@ -76,6 +75,42 @@ endif
 eth_driver_znyqmp_gem.elf: eth_driver_cargo
 	cmp -s ${ETH_CARGO_ELF} $@ || cp ${ETH_CARGO_ELF} $@
 
+else ifeq ($(NETWORK_DRIVER),pancake)
+
+ETH_DRIVER_PNK = \
+	${SDDF}/util/util.pnk \
+	${ETHERNET_DRIVER_DIR}/pancake/ethernet.pnk
+
+eth_driver_znyqmp_gem.elf: network/zynqmp-gem/ethernet_pnk.o network/zynqmp-gem/ethernet.o \
+		network/zynqmp-gem/ethernet_init_pnk.o util/pancake_ffi.o util/pancake_common.o
+	$(LD) $(LDFLAGS) $^ $(LIBS) -o $@
+
+network/zynqmp-gem/ethernet_pnk.o: network/zynqmp-gem/ethernet_pnk.s
+	$(CC) -c $(CFLAGS) -o $@ $<
+
+network/zynqmp-gem/ethernet_pnk.S: network/zynqmp-gem/ethernet_pnk.pnk
+	$(PANCAKE_COMPILER) $(PANCAKE_FLAGS) < $< > $@
+
+network/zynqmp-gem/ethernet_pnk.pnk: $(ETH_DRIVER_PNK)
+	mkdir -p network/zynqmp-gem
+	cat $^ | $(CPP) -P -CC -nostdinc > $@
+
+network/zynqmp-gem/ethernet_pre.o: ${ETHERNET_DRIVER_DIR}/c/ethernet.c ${CHECK_NETDRV_FLAGS_MD5}
+	mkdir -p network/zynqmp-gem
+	${CC} -c ${CFLAGS} ${CFLAGS_network} -I ${ETHERNET_DRIVER_DIR}/c -o $@ $<
+
+network/zynqmp-gem/ethernet.o: network/zynqmp-gem/ethernet_pre.o
+	$(OBJCOPY) --redefine-sym init=c_init --redefine-sym notified=c_notified $< $@
+
+network/zynqmp-gem/ethernet_init_pnk.o: ${ETHERNET_DRIVER_DIR}/pancake/ethernet_init_pnk.c ${CHECK_NETDRV_FLAGS_MD5}
+	mkdir -p network/zynqmp-gem
+	${CC} -c ${CFLAGS} ${CFLAGS_network} -I ${ETHERNET_DRIVER_DIR}/c -o $@ $<
+
+clean::
+	rm -f network/zynqmp-gem/ethernet_init_pnk.[do] network/zynqmp-gem/ethernet.o
+	rm -f network/zynqmp-gem/ethernet_pre.[do] network/zynqmp-gem/ethernet_pnk.pnk
+	rm -f network/zynqmp-gem/ethernet_pnk.[doS]
+
 else
-$(error NETWORK_DRIVER must be c or rust, not '$(NETWORK_DRIVER)')
+$(error NETWORK_DRIVER must be c, rust, or pancake, not '$(NETWORK_DRIVER)')
 endif

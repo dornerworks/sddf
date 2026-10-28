@@ -1,0 +1,11 @@
+/*
+ * Copyright 2026, DornerWorks
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+// For now, hand every notification to the C driver's notified
+export fun notified(1 ch)
+{
+    @c_notified(0, ch, 0, 0);
+    return 0;
+}
