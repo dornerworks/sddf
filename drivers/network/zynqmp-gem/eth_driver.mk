@@ -79,6 +79,7 @@ else ifeq ($(NETWORK_DRIVER),pancake)
 
 ETH_DRIVER_PNK = \
 	${SDDF}/util/util.pnk \
+	${SDDF}/include/sddf/network/queue.pnk \
 	${ETHERNET_DRIVER_DIR}/pancake/ethernet.pnk
 
 eth_driver_znyqmp_gem.elf: network/zynqmp-gem/ethernet_pnk.o network/zynqmp-gem/ethernet.o \
