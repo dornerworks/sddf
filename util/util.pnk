@@ -72,3 +72,15 @@ inline fun fence_seq_cst()
     @fence_seq_cst(0, 0, 0, 0);
     return 0;
 }
+
+inline fun wwmb()
+{
+    @wwmb(0, 0, 0, 0);
+    return 0;
+}
+
+inline fun rrmb()
+{
+    @rrmb(0, 0, 0, 0);
+    return 0;
+}
