@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 
 build/
+target/
 *.zip
 *.tar.gz
 *.tar

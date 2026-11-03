@@ -70,3 +70,8 @@ Files:
     util/custom_libc/aarch64/memmove.c
 Copyright: Newlib contributors
 License: LicenseRef-Newlib
+
+Files:
+  support/targets/*.json
+Copyright: 2023, Colias Group, LLC
+License: BSD-2-Clause
