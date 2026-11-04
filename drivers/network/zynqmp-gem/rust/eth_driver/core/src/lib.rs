@@ -158,8 +158,17 @@ impl Driver {
         }
     }
 
-    pub fn tx_get_buffer(&mut self) -> usize {
-        self.tx_ring.get_buffer()
+    pub fn tx_get_buffer(&mut self) -> Option<usize> {
+        self.tx_ring.get_used_buffer()
+    }
+
+    pub fn tx_fill_buffer(&mut self, buf_paddr: usize, len: usize) {
+        if self.tx_ring.entry_available() {
+            self.tx_ring.set_desc(buf_paddr, len);
+        } else {
+            let index = self.tx_ring.get_tail() % self.tx_ring.len();
+            error!("Tried to transmit with a descriptor that SW doesn't own: {index}. Should not happen");
+        }
     }
 
     pub fn tx_is_empty(&self) -> bool {
@@ -170,14 +179,7 @@ impl Driver {
         self.tx_ring.is_full()
     }
 
-    pub fn transmit(&mut self, buf_paddr: usize, len: usize) {
-        if self.tx_ring.entry_available() {
-            self.tx_ring.set_desc(buf_paddr, len);
-            self.dev.wait_for_transmit_finish();
-            self.dev.transmit();
-        } else {
-            let index = self.tx_ring.get_tail() % self.tx_ring.len();
-            error!("Tried to transmit with a descriptor that SW doesn't own: {index}. Should not happen");
-        }
+    pub fn transmit(&mut self) {
+        self.dev.transmit();
     }
 }
