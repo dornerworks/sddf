@@ -1,0 +1,453 @@
+/*
+ * Copyright 2026, DornerWorks
+ *
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+#define GEM_REG_BASE                 pnk_mem(0)
+
+/* Register offsets for the GEM. */
+#define ZYNQ_GEM_NWCTRL              0
+#define ZYNQ_GEM_TXSR                20 // 0x14
+#define ZYNQ_GEM_RXSR                32 // 0x20
+#define ZYNQ_GEM_ISR                 36 // 0x24
+
+/* nwcntrl: Network control register */
+#define ZYNQ_GEM_NWCTRL_STARTTX_MASK 512 // 0x200
+
+/* rxsr/txsr: Receive/Transmit status register */
+#define ZYNQ_GEM_RXSR_CLEAR          15   // 0x0F
+#define ZYNQ_GEM_RXSR_ERR_MASK       13   // 0x0D
+#define ZYNQ_GEM_TXSR_CLEAR          255  // 0xFF
+#define ZYNQ_GEM_TXSR_ERR_MASK       1104 // 0x450
+
+/* Interrupts - based on int_status register */
+#define ZYNQ_INT_RXC                 BIT(1)
+#define ZYNQ_INT_TXC                 BIT(7)
+#define ZYNQ_IRQ_MASK                (ZYNQ_INT_RXC | ZYNQ_INT_TXC)
+
+#define ETH_IRQ_CH                   pnk_mem(1)
+#define ETH_RX_CH                    pnk_mem(2)
+#define ETH_TX_CH                    pnk_mem(3)
+
+#define ETH_RX_QUEUE_HANDLE          pnk_mem(4)
+#define ETH_TX_QUEUE_HANDLE          pnk_mem(5)
+
+#define ETH_RX_RING                  pnk_mem(6)
+#define ETH_TX_RING                  pnk_mem(7)
+
+#define HW_RING_TAIL                 0
+#define HW_RING_HEAD                 4
+#define HW_RING_CAPACITY             8
+#define HW_RING_DESCR                16
+
+#define DESCRIPTOR_SIZE              16
+#define DESCRIPTOR_ADDR              0
+#define DESCRIPTOR_STAT              4
+#define DESCRIPTOR_ADDR_HI           8
+#define DESCRIPTOR_UNUSED            12
+
+#define TXD_USED                     BIT(31)
+#define TXD_WRAP                     BIT(30)
+#define TXD_LAST                     BIT(15)
+#define TXD_LEN_MASK                 16383 // 0x3FFF
+#define TXD_MK_HW_OWNR               (0 << 31)
+
+#define RXD_WRAP                     BIT(1)
+#define RXD_OWN                      1
+#define RXD_ADDR_MASK                4294967292 // 0xFFFFFFFC
+#define RXD_LEN_MASK                 8191       // 0x1FFF
+
+#define HW_RING_LENGTH(tail, head)         (((tail) - (head)) & MAX_UINT32)
+#define HW_RING_FULL(tail, head, capacity) (HW_RING_LENGTH(tail, head) == capacity)
+#define HW_RING_EMPTY(tail, head)          (HW_RING_LENGTH(tail, head) == 0)
+
+// helper functions
+inline fun reg_get(1 base, 1 offset)
+{
+    var reg_addr = base + offset;
+    var data = 0;
+    !ld32 data, reg_addr;
+    return data;
+}
+
+inline fun reg_set(1 base, 1 offset, 1 data)
+{
+    var reg_addr = base + offset;
+    !st32 reg_addr, data;
+    return 0;
+}
+
+inline fun hw_ring_get_tail(1 ring)
+{
+    var tail = 0;
+    !ld32 tail, ring + HW_RING_TAIL;
+    return tail;
+}
+
+inline fun hw_ring_get_head(1 ring)
+{
+    var head = 0;
+    !ld32 head, ring + HW_RING_HEAD;
+    return head;
+}
+
+inline fun hw_ring_get_capacity(1 ring)
+{
+    var capacity = 0;
+    !ld32 capacity, ring + HW_RING_CAPACITY;
+    return capacity;
+}
+
+inline fun hw_ring_get_descr_base(1 ring)
+{
+    var base = 0;
+    !ldw base, ring + HW_RING_DESCR;
+    return base;
+}
+
+inline fun hw_ring_set_tail(1 ring, 1 new_tail)
+{
+    !st32 ring + HW_RING_TAIL, new_tail;
+    return 0;
+}
+
+inline fun hw_ring_set_head(1 ring, 1 new_head)
+{
+    !st32 ring + HW_RING_HEAD, new_head;
+    return 0;
+}
+
+// library functions
+inline fun update_ring_slot_rx(1 descr_base, 1 index, 1 phys)
+{
+    var d = descr_base + index * DESCRIPTOR_SIZE;
+    !st32 d + DESCRIPTOR_ADDR_HI, phys >>> 32;
+    !st32 d + DESCRIPTOR_STAT, 0;
+    /* Ensure all writes to the descriptor are ordered before we set the flags
+     * that makes hardware aware of this slot
+     */
+    wwmb();
+    !st32 d + DESCRIPTOR_ADDR, phys & MAX_UINT32;
+
+    return 0;
+}
+
+inline fun update_ring_slot_tx(1 descr_base, 1 index, 1 phys, 1 len, 1 stat)
+{
+    var d = descr_base + index * DESCRIPTOR_SIZE;
+    !st32 d + DESCRIPTOR_ADDR, phys & MAX_UINT32;
+    !st32 d + DESCRIPTOR_ADDR_HI, phys >>> 32;
+    /* Ensure all writes to the descriptor are ordered before we set the flags
+     * that makes hardware aware of this slot.
+     */
+    wwmb();
+    !st32 d + DESCRIPTOR_STAT, stat | (len & TXD_LEN_MASK);
+
+    return 0;
+}
+
+inline fun rx_provide()
+{
+    var ring = ETH_RX_RING;
+    var queue = net_queue_get_free(ETH_RX_QUEUE_HANDLE);
+
+    /* Load these up front to avoid excessive memory loads in the loop */
+    var ring_tail = hw_ring_get_tail(ring);
+    var ring_head = hw_ring_get_head(ring);
+    var ring_capacity = hw_ring_get_capacity(ring);
+    var descr_base = hw_ring_get_descr_base(ring);
+
+    var queue_tail = 0;
+    var queue_head = net_queue_get_head(queue);
+    var queue_capacity = net_queue_get_capacity(ETH_RX_QUEUE_HANDLE);
+
+    var reprocess = true;
+    while (reprocess) {
+        while (!HW_RING_FULL(ring_tail, ring_head, ring_capacity)) {
+            queue_tail = net_queue_get_tail(queue);
+            if (NET_QUEUE_EMPTY(queue_tail, queue_head)) {
+                break;
+            }
+
+            var {1, 1} buffer = net_dequeue_at(queue, queue_capacity, queue_head);
+            queue_head = queue_head + 1;
+
+            var index = ring_tail & (ring_capacity - 1);
+
+            var phys = buffer.0;
+
+            if (index + 1 == ring_capacity) {
+                phys = phys | RXD_WRAP;
+            }
+
+            update_ring_slot_rx(descr_base, index, phys);
+            ring_tail = ring_tail + 1;
+        }
+        hw_ring_set_tail(ring, ring_tail);
+
+        if (!HW_RING_FULL(ring_tail, ring_head, ring_capacity)) {
+            net_request_signal_free(queue);
+        } else {
+            net_cancel_signal(queue);
+        }
+
+        reprocess = false;
+
+        queue_tail = net_queue_get_tail(queue);
+        if (!NET_QUEUE_EMPTY(queue_tail, queue_head) && !HW_RING_FULL(ring_tail, ring_head, ring_capacity)) {
+            net_cancel_signal(queue);
+            reprocess = true;
+        }
+    }
+
+    return 0;
+}
+
+inline fun rx_return()
+{
+    var ring = ETH_RX_RING;
+    var queue = net_queue_get_active(ETH_RX_QUEUE_HANDLE);
+
+    /* Load these up front to avoid excessive memory loads in the loop */
+    var ring_tail = hw_ring_get_tail(ring);
+    var ring_head = hw_ring_get_head(ring);
+    var ring_capacity = hw_ring_get_capacity(ring);
+    var descr_base = hw_ring_get_descr_base(ring);
+
+    var queue_tail = net_queue_get_tail(queue);
+    var queue_head = 0;
+    var queue_capacity = net_queue_get_capacity(ETH_RX_QUEUE_HANDLE);
+
+    var packets_transferred = false;
+    while (!HW_RING_EMPTY(ring_tail, ring_head)) {
+        var index = ring_head & (ring_capacity - 1);
+
+        var d = descr_base + index * DESCRIPTOR_SIZE;
+        var addr = 0;
+        !ld32 addr, d + DESCRIPTOR_ADDR;
+        if (!(addr & RXD_OWN)) {
+            break;
+        }
+
+        /*
+         * The following barrier orders the following reads from the descriptor to be after
+         * the read from the 'status' field of the descriptor.
+         */
+        rrmb();
+
+        var stat = 0;
+        var addr_hi = 0;
+        !ld32 stat, d + DESCRIPTOR_STAT;
+        !ld32 addr_hi, d + DESCRIPTOR_ADDR_HI;
+        var len = 0;
+        len = stat & RXD_LEN_MASK;
+        var phys = (addr_hi << 32) | (addr & RXD_ADDR_MASK);
+
+        queue_head = net_queue_get_head(queue);
+        if (!NET_QUEUE_FULL(queue_tail, queue_head, queue_capacity)) {
+            net_enqueue_at(queue, queue_capacity, queue_tail, phys, len);
+            queue_tail = queue_tail + 1;
+        }
+
+        packets_transferred = true;
+        ring_head = ring_head + 1;
+    }
+    hw_ring_set_head(ring, ring_head);
+
+    var require_signal = net_require_signal(queue);
+    if (packets_transferred && require_signal) {
+        net_cancel_signal(queue);
+        sddf_notify(ETH_RX_CH);
+    }
+
+    return 0;
+}
+
+inline fun tx_provide()
+{
+    var ring = ETH_TX_RING;
+    var queue = net_queue_get_active(ETH_TX_QUEUE_HANDLE);
+
+    /* Load these up front to avoid excessive memory loads in the loop */
+    var ring_tail = hw_ring_get_tail(ring);
+    var ring_head = hw_ring_get_head(ring);
+    var ring_capacity = hw_ring_get_capacity(ring);
+    var descr_base = hw_ring_get_descr_base(ring);
+
+    var queue_tail = 0;
+    var queue_head = net_queue_get_head(queue);
+    var queue_capacity = net_queue_get_capacity(ETH_TX_QUEUE_HANDLE);
+
+    var reprocess = true;
+    while (reprocess) {
+        while (!HW_RING_FULL(ring_tail, ring_head, ring_capacity)) {
+            queue_tail = net_queue_get_tail(queue);
+            if (NET_QUEUE_EMPTY(queue_tail, queue_head)) {
+                break;
+            }
+
+            var {1, 1} buffer = net_dequeue_at(queue, queue_capacity, queue_head);
+            queue_head = queue_head + 1;
+
+            var index = ring_tail & (ring_capacity - 1);
+
+            var stat = TXD_LAST | TXD_MK_HW_OWNR;
+            var phys = buffer.0;
+            var len = buffer.1;
+
+            if (index + 1 == ring_capacity) {
+                stat = stat | TXD_WRAP;
+            }
+
+            update_ring_slot_tx(descr_base, index, phys, len, stat);
+            ring_tail = ring_tail + 1;
+        }
+        hw_ring_set_tail(ring, ring_tail);
+
+        net_request_signal(queue);
+        reprocess = false;
+
+        queue_tail = net_queue_get_tail(queue);
+        if (!HW_RING_FULL(ring_tail, ring_head, ring_capacity) && !NET_QUEUE_EMPTY(queue_tail, queue_head)) {
+            net_cancel_signal(queue);
+            reprocess = true;
+        }
+    }
+
+    /* The following barrier orders the write to the DMA register to be after the write to
+     * the 'status' fields of the descriptors updated in function update_ring_slot().
+     */
+    wwmb();
+
+    var nwctrl_addr = GEM_REG_BASE + ZYNQ_GEM_NWCTRL;
+    var nwctrl = 0;
+    !ld32 nwctrl, nwctrl_addr;
+    !st32 nwctrl_addr, nwctrl | ZYNQ_GEM_NWCTRL_STARTTX_MASK;
+
+    return 0;
+}
+
+inline fun tx_return()
+{
+    var ring = ETH_TX_RING;
+    var queue = net_queue_get_free(ETH_TX_QUEUE_HANDLE);
+
+    /* Load these up front to avoid excessive memory loads in the loop */
+    var ring_tail = hw_ring_get_tail(ring);
+    var ring_head = hw_ring_get_head(ring);
+    var ring_capacity = hw_ring_get_capacity(ring);
+    var descr_base = hw_ring_get_descr_base(ring);
+
+    var queue_tail = net_queue_get_tail(queue);
+    var queue_head = 0;
+    var queue_capacity = net_queue_get_capacity(ETH_TX_QUEUE_HANDLE);
+
+    var enqueued = false;
+    while (!HW_RING_EMPTY(ring_tail, ring_head)) {
+        var index = ring_head & (ring_capacity - 1);
+
+        var d = descr_base + index * DESCRIPTOR_SIZE;
+        var stat = 0;
+        !ld32 stat, d + DESCRIPTOR_STAT;
+        if (!(stat & TXD_USED)) {
+            break;
+        }
+
+        /*
+         * The following barrier orders the following reads to the descriptor to be after
+         * the read to the 'status' field of the descriptor.
+         */
+        rrmb();
+
+        var addr = 0;
+        var addr_hi = 0;
+        !ld32 addr, d + DESCRIPTOR_ADDR;
+        !ld32 addr_hi, d + DESCRIPTOR_ADDR_HI;
+        var phys = (addr_hi << 32) | addr;
+
+        queue_head = net_queue_get_head(queue);
+        if (!NET_QUEUE_FULL(queue_tail, queue_head, queue_capacity)) {
+            net_enqueue_at(queue, queue_capacity, queue_tail, phys, 0);
+            queue_tail = queue_tail + 1;
+        }
+
+        enqueued = true;
+        ring_head = ring_head + 1;
+    }
+    hw_ring_set_head(ring, ring_head);
+
+    var require_signal = net_require_signal(queue);
+    if (enqueued && require_signal) {
+        net_cancel_signal(queue);
+        sddf_notify(ETH_TX_CH);
+    }
+
+    return 0;
+}
+
+inline fun handle_irq()
+{
+    var gem_base = GEM_REG_BASE;
+
+    var isr = reg_get(gem_base, ZYNQ_GEM_ISR);
+    var rxsr = reg_get(gem_base, ZYNQ_GEM_RXSR);
+    var txsr = reg_get(gem_base, ZYNQ_GEM_TXSR);
+    isr = isr & ZYNQ_IRQ_MASK;
+    rxsr = rxsr & ZYNQ_GEM_RXSR_ERR_MASK;
+    txsr = txsr & ZYNQ_GEM_TXSR_ERR_MASK;
+    reg_set(gem_base, ZYNQ_GEM_ISR, isr);
+    reg_set(gem_base, ZYNQ_GEM_RXSR, rxsr);
+    reg_set(gem_base, ZYNQ_GEM_TXSR, txsr);
+
+    while (isr & ZYNQ_IRQ_MASK) {
+        if (isr & ZYNQ_INT_TXC) {
+            tx_return();
+            tx_provide();
+        }
+        if (isr & ZYNQ_INT_RXC) {
+            rx_return();
+            rx_provide();
+        }
+        if (rxsr) {
+            @eth_rx_error(0, rxsr, 0, 0);
+        }
+        if (txsr) {
+            @eth_tx_error(0, txsr, 0, 0);
+        }
+
+        isr = reg_get(gem_base, ZYNQ_GEM_ISR);
+        isr = isr & ZYNQ_IRQ_MASK;
+        reg_set(gem_base, ZYNQ_GEM_ISR, isr);
+
+        rxsr = reg_get(gem_base, ZYNQ_GEM_RXSR);
+        rxsr = rxsr & ZYNQ_GEM_RXSR_ERR_MASK;
+        reg_set(gem_base, ZYNQ_GEM_RXSR, rxsr);
+
+        txsr = reg_get(gem_base, ZYNQ_GEM_TXSR);
+        txsr = txsr & ZYNQ_GEM_TXSR_ERR_MASK;
+        reg_set(gem_base, ZYNQ_GEM_TXSR, txsr);
+    }
+
+    return 0;
+}
+
+export fun notified(1 ch)
+{
+    if (ch == ETH_IRQ_CH) {
+        handle_irq();
+        sddf_deferred_irq_ack(ch);
+    } else {
+            if (ch == ETH_RX_CH) {
+            rx_provide();
+        } else {
+            if (ch == ETH_TX_CH) {
+                tx_provide();
+            } else {
+                @eth_unexpected_notification(0, ch, 0, 0);
+            }
+        }
+    }
+
+    return 0;
+}

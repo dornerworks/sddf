@@ -73,3 +73,13 @@ void ffifence_seq_cst(unsigned char *c, long clen, unsigned char *a, long alen)
 {
     __atomic_thread_fence(__ATOMIC_SEQ_CST);
 }
+
+void ffiwwmb(unsigned char *c, long clen, unsigned char *a, long alen)
+{
+    wwmb();
+}
+
+void ffirrmb(unsigned char *c, long clen, unsigned char *a, long alen)
+{
+    rrmb();
+}
