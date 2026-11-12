@@ -23,25 +23,6 @@ __attribute__((__section__(".net_driver_config"))) net_driver_config_t config;
 #define TX_COUNT 256
 #define MAX_COUNT MAX(RX_COUNT, TX_COUNT)
 
-/* HW ring descriptor, 64-bit (shared with device).
- * For RX, Word 0 (addr) also includes the wrap bit [1] and ownership bit [0] (Table 34-5)
- * For TX, Word 0 (addr) is only an address, wrap and ownership bits in Word 1 (stat) (Table 34-8)
- */
-struct descriptor {
-    uint32_t addr;      /* Word 0: Buffer address (RX: wrap + ownership as well) */
-    uint32_t stat;      /* Word 1: Status/control */
-    uint32_t addr_hi;   /* Word 2: Buffer address high (upper 32 bits) */
-    uint32_t unused;
-};
-
-/* HW ring buffer data type */
-typedef struct {
-    uint32_t tail; /* index to insert at */
-    uint32_t head; /* index to remove from */
-    uint32_t capacity; /* capacity of the ring */
-    volatile struct descriptor *descr; /* buffer descriptor array */
-} hw_ring_t;
-
 hw_ring_t rx; /* Rx NIC ring */
 hw_ring_t tx; /* Tx NIC ring */
 

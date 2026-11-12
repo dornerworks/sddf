@@ -151,9 +151,9 @@ def output_and_reset():
         test["system"]["pd_user"],
         test["system"]["data"]["entries"],
         test["system"]["data"]["schedules"],
-        test["active"] * test["system"]["pd_total"] / total_board_cycles,
-        test["active"] * test["system"]["pd_kernel"] / total_board_cycles,
-        test["active"] * test["system"]["pd_user"] / total_board_cycles,
+        test["active"] * test["system"]["pd_total"] / total_board_cycles if total_board_cycles != 0 else 0,
+        test["active"] * test["system"]["pd_kernel"] / total_board_cycles if total_board_cycles != 0 else 0,
+        test["active"] * test["system"]["pd_user"] / total_board_cycles if total_board_cycles != 0 else 0,
     )
 
     # Reset test, keep test number
@@ -264,5 +264,8 @@ if pmu_data:
     print("\n", ",".join(pmu_data.keys()), sep="")
     for index in range(0, test["test"]):
         for key in pmu_data.keys():
-            print(f"{pmu_data[key][index]},", end="")
+            try:
+                print(f"{pmu_data[key][index]},", end="")
+            except IndexError:
+                break
         print("\n", end="")

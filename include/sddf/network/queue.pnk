@@ -1,0 +1,295 @@
+/*
+ * Copyright 2026, DornerWorks
+ *
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+#define NET_BUFF_DESC_SIZE           16
+#define NET_BUFF_DESC_IO_OR_OFFSET   0
+#define NET_BUFF_DESC_LEN            8
+#define NET_BUFF_DESC_OID            10
+
+#define NET_QUEUE_TAIL               0
+#define NET_QUEUE_HEAD               2
+#define NET_QUEUE_CONSUMER_SIGNALLED 4
+#define NET_QUEUE_BUFFERS            8
+
+#define NET_QUEUE_HANDLE_FREE        0
+#define NET_QUEUE_HANDLE_ACTIVE      8
+#define NET_QUEUE_HANDLE_CAPACITY    16
+
+#define NET_QUEUE_LENGTH(tail, head)         (((tail) - (head)) & MAX_UINT16)
+#define NET_QUEUE_FULL(tail, head, capacity) (NET_QUEUE_LENGTH(tail, head) == capacity)
+#define NET_QUEUE_EMPTY(tail, head)          (NET_QUEUE_LENGTH(tail, head) == 0)
+
+// TODO: Find a proper way to pull this build parameter in
+#define CONFIG_ENABLE_SMP_SUPPORT 0
+
+// helper functions
+inline fun net_queue_empty(1 queue)
+{
+    var length = net_queue_length(queue);
+    return length == 0;
+}
+
+inline fun net_queue_full(1 queue, 1 capacity)
+{
+    var length = net_queue_length(queue);
+    return length == capacity;
+}
+
+inline fun net_queue_get_tail(1 queue)
+{
+    var tail = 0;
+    !ld16 tail, queue + NET_QUEUE_TAIL;
+    return tail;
+}
+
+inline fun net_queue_get_head(1 queue)
+{
+    var head = 0;
+    !ld16 head, queue + NET_QUEUE_HEAD;
+    return head;
+}
+
+inline fun net_queue_get_consumer_signalled(1 queue)
+{
+    var consumer_signalled = 0;
+    !ld32 consumer_signalled, queue + NET_QUEUE_CONSUMER_SIGNALLED;
+    return consumer_signalled;
+}
+
+inline fun net_queue_set_tail(1 queue, 1 new_tail)
+{
+    !st16 queue + NET_QUEUE_TAIL, new_tail;
+    return 0;
+}
+
+inline fun net_queue_set_head(1 queue, 1 new_head)
+{
+    !st16 queue + NET_QUEUE_HEAD, new_head;
+    return 0;
+}
+
+inline fun net_queue_set_consumer_signalled(1 queue, 1 new_consumer_signalled)
+{
+    !st32 queue + NET_QUEUE_CONSUMER_SIGNALLED, new_consumer_signalled;
+    return 0;
+}
+
+inline fun net_queue_get_free(1 queue_handle)
+{
+    var queue = 0;
+    !ldw queue, queue_handle + NET_QUEUE_HANDLE_FREE;
+    return queue;
+}
+
+inline fun net_queue_get_active(1 queue_handle)
+{
+    var queue = 0;
+    !ldw queue, queue_handle + NET_QUEUE_HANDLE_ACTIVE;
+    return queue;
+}
+
+inline fun net_queue_get_capacity(1 queue_handle)
+{
+    var queue = 0;
+    !ld32 queue, queue_handle + NET_QUEUE_HANDLE_CAPACITY;
+    return queue;
+}
+
+inline fun net_queue_buff_addr(1 queue, 1 capacity, 1 index)
+{
+    // This formula for modulo assumes capacity is a power of 2
+    var k = index & (capacity - 1);
+    var addr = queue + NET_QUEUE_BUFFERS + k * NET_BUFF_DESC_SIZE;
+    return addr;
+}
+
+inline fun net_enqueue_at(1 queue, 1 capacity, 1 tail, 1 io_or_offset, 1 len)
+{
+    var buffer = net_queue_buff_addr(queue, capacity, tail);
+    !stw buffer + NET_BUFF_DESC_IO_OR_OFFSET, io_or_offset;
+    !st16 buffer + NET_BUFF_DESC_LEN, len;
+    !st8 buffer + NET_BUFF_DESC_OID, 0;
+    if (CONFIG_ENABLE_SMP_SUPPORT) {
+        THREAD_MEMORY_RELEASE();
+    }
+    net_queue_set_tail(queue, tail + 1);
+
+    return 0;
+}
+
+inline fun {1, 1} net_dequeue_at(1 queue, 1 capacity, 1 head)
+{
+    var buffer = net_queue_buff_addr(queue, capacity, head);
+    var io_or_offset = 0;
+    var len = 0;
+    !ldw io_or_offset, buffer + NET_BUFF_DESC_IO_OR_OFFSET;
+    !ld16 len, buffer + NET_BUFF_DESC_LEN;
+    if (CONFIG_ENABLE_SMP_SUPPORT) {
+        THREAD_MEMORY_RELEASE();
+    }
+    net_queue_set_head(queue, head + 1);
+
+    return <io_or_offset, len>;
+}
+
+inline fun net_enqueue(1 queue, 1 capacity, 1 io_or_offset, 1 len)
+{
+    var is_full = net_queue_full(queue, capacity);
+    if (is_full) {
+        return -1;
+    }
+
+    var tail = net_queue_get_tail(queue);
+    net_enqueue_at(queue, capacity, tail, io_or_offset, len);
+
+    return 0;
+}
+
+inline fun {1, 1, 1} net_dequeue(1 queue, 1 capacity)
+{
+    var head = net_queue_get_head(queue);
+    var err = 0;
+    var {1, 1} buffer = net_dequeue_at(queue, capacity, head);
+
+    return <err, buffer.0, buffer.1>;
+}
+
+inline fun net_request_signal(1 queue)
+{
+    net_queue_set_consumer_signalled(queue, 0);
+    if (CONFIG_ENABLE_SMP_SUPPORT) {
+        THREAD_MEMORY_RELEASE();
+    }
+    return 0;
+}
+
+inline fun net_cancel_signal(1 queue)
+{
+    net_queue_set_consumer_signalled(queue, 1);
+    if (CONFIG_ENABLE_SMP_SUPPORT) {
+        THREAD_MEMORY_RELEASE();
+    }
+    return 0;
+}
+
+inline fun net_require_signal(1 queue)
+{
+    var consumer_signalled = net_queue_get_consumer_signalled(queue);
+    return !consumer_signalled;
+}
+
+// library functions
+inline fun net_queue_length(1 queue)
+{
+    var tail = net_queue_get_tail(queue);
+    var head = net_queue_get_head(queue);
+    var length = NET_QUEUE_LENGTH(tail, head);
+    return length;
+}
+
+inline fun net_queue_empty_free(1 queue_handle)
+{
+    var queue = net_queue_get_free(queue_handle);
+    var is_empty = net_queue_empty(queue);
+    return is_empty;
+}
+
+inline fun net_queue_empty_active(1 queue_handle)
+{
+    var queue = net_queue_get_active(queue_handle);
+    var is_empty = net_queue_empty(queue);
+    return is_empty;
+}
+
+inline fun net_queue_full_free(1 queue_handle)
+{
+    var queue = net_queue_get_free(queue_handle);
+    var capacity = net_queue_get_capacity(queue_handle);
+    var is_full = net_queue_full(queue, capacity);
+    return is_full;
+}
+
+inline fun net_queue_full_active(1 queue_handle)
+{
+    var queue = net_queue_get_active(queue_handle);
+    var capacity = net_queue_get_capacity(queue_handle);
+    var is_full = net_queue_full(queue, capacity);
+    return is_full;
+}
+
+inline fun net_enqueue_free(1 queue_handle, 1 io_or_offset, 1 len)
+{
+    var queue = net_queue_get_free(queue_handle);
+    var capacity = net_queue_get_capacity(queue_handle);
+    var err = net_enqueue(queue, capacity, io_or_offset, len);
+    return err;
+}
+
+inline fun net_enqueue_active(1 queue_handle, 1 io_or_offset, 1 len)
+{
+    var queue = net_queue_get_active(queue_handle);
+    var capacity = net_queue_get_capacity(queue_handle);
+    var err = net_enqueue(queue, capacity, io_or_offset, len);
+    return err;
+}
+
+inline fun {1, 1, 1} net_dequeue_free(1 queue_handle)
+{
+    var queue = net_queue_get_free(queue_handle);
+    var capacity = net_queue_get_capacity(queue_handle);
+    var {1, 1, 1} result = net_dequeue(queue, capacity);
+    return result;
+}
+
+inline fun {1, 1, 1} net_dequeue_active(1 queue_handle)
+{
+    var queue = net_queue_get_active(queue_handle);
+    var capacity = net_queue_get_capacity(queue_handle);
+    var {1, 1, 1} result = net_dequeue(queue, capacity);
+    return result;
+}
+
+inline fun net_request_signal_free(1 queue_handle)
+{
+    var queue = net_queue_get_free(queue_handle);
+    net_request_signal(queue);
+    return 0;
+}
+
+inline fun net_request_signal_active(1 queue_handle)
+{
+    var queue = net_queue_get_active(queue_handle);
+    net_request_signal(queue);
+    return 0;
+}
+
+inline fun net_cancel_signal_free(1 queue_handle)
+{
+    var queue = net_queue_get_free(queue_handle);
+    net_cancel_signal(queue);
+    return 0;
+}
+
+inline fun net_cancel_signal_active(1 queue_handle)
+{
+    var queue = net_queue_get_active(queue_handle);
+    net_cancel_signal(queue);
+    return 0;
+}
+
+inline fun net_require_signal_free(1 queue_handle)
+{
+    var queue = net_queue_get_free(queue_handle);
+    var require = net_require_signal(queue);
+    return require;
+}
+
+inline fun net_require_signal_active(1 queue_handle)
+{
+    var queue = net_queue_get_active(queue_handle);
+    var require = net_require_signal(queue);
+    return require;
+}
